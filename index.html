@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rasa Nusantara: Sky Journey</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --sky-blue: #87CEEB;
+            --sky-deep: #00BFFF;
+            --cloud-white: #F0F8FF;
+        }
+
+        body {
+            font-family: 'Quicksand', sans-serif;
+            background: linear-gradient(to bottom, var(--sky-blue), var(--cloud-white));
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            user-select: none;
+            touch-action: none; /* Penting untuk drag & drop di mobile */
+        }
+
+        /* --- Animations --- */
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        @keyframes drift {
+            from { transform: translateX(-100%); }
+            to { transform: translateX(200vw); }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+
+        @keyframes particle-fade {
+            to { transform: translate(var(--tw-translate-x), var(--tw-translate-y)) scale(0); opacity: 0; }
+        }
+
+        .animate-float { animation: float 3s ease-in-out infinite; }
+        .animate-drift { animation: drift 30s linear infinite; }
+        .animate-shake { animation: shake 0.3s ease-in-out; }
+
+        .batik-overlay {
+            position: absolute;
+            inset: 0;
+            background-image: url('data:image/svg+xml,<svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 0 L100 50 L50 100 L0 50 Z" fill="none" stroke="white" stroke-width="0.5" opacity="0.1"/></svg>');
+            background-size: 80px 80px;
+            pointer-events: none;
+            opacity: 0.15;
+        }
+
+        .btn-fancy {
+            background: linear-gradient(135deg, #FFF, #E0F2FE);
+            box-shadow: 0 8px 0 #7DD3FC, 0 12px 15px rgba(0,0,0,0.1);
+            transition: all 0.1s;
+        }
+        .btn-fancy:active {
+            transform: translateY(4px);
+            box-shadow: 0 4px 0 #7DD3FC, 0 6px 10px rgba(0,0,0,0.1);
+        }
+
+        /* Styling Draggable */
+        .draggable-item {
+            touch-action: none;
+            cursor: grab;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 20;
+        }
+        .draggable-item:active { cursor: grabbing; z-index: 50; }
+        .dragging { transform: scale(1.1); box-shadow: 0 15px 30px rgba(0,0,0,0.2); }
+
+        .drop-target {
+            transition: all 0.3s;
+        }
+        .target-active {
+            background-color: #E0F2FE;
+            border-color: #0EA5E9;
+            transform: scale(1.05);
+        }
+
+        /* Screen Transition */
+        #transition-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.4s;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #transition-overlay.active { opacity: 1; pointer-events: all; }
+
+        .steam-line {
+            stroke-dasharray: 20;
+            animation: steam 2s infinite linear;
+        }
+        @keyframes steam { to { stroke-dashoffset: -40; } }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center p-4">
+
+    <div class="batik-overlay"></div>
+    <div id="clouds-container" class="fixed inset-0 overflow-hidden"></div>
+    
+    <div id="transition-overlay">
+        <div class="animate-float text-center">
+            <svg width="80" height="50" viewBox="0 0 150 80" class="mx-auto">
+                <ellipse cx="40" cy="50" rx="30" ry="25" fill="#87CEEB" />
+                <ellipse cx="80" cy="40" rx="40" ry="35" fill="#87CEEB" />
+                <ellipse cx="120" cy="55" rx="25" ry="20" fill="#87CEEB" />
+            </svg>
+            <p class="text-sky-400 font-bold mt-2">Menyiapkan Meja...</p>
+        </div>
+    </div>
+
+    <div id="app" class="relative z-10 w-full max-w-md h-full flex flex-col"></div>
+
+    <script>
+        const CULINARY_DATA = [
+            { id: 1, name: "Lumpia", origin: "Semarang", color: "#FFD700", fact: "Perpaduan budaya Tionghoa dan Jawa yang ikonik." },
+            { id: 2, name: "Rendang", origin: "Padang", color: "#8B4513", fact: "Pernah dinobatkan sebagai makanan terlezat di dunia." },
+            { id: 3, name: "Sate Madura", origin: "Madura", color: "#FF6347", fact: "Terkenal dengan bumbu kacangnya yang kental dan gurih." },
+            { id: 4, name: "Gudeg", origin: "Yogyakarta", color: "#A0522D", fact: "Dimasak berjam-jam dengan gula merah dan santan." },
+            { id: 5, name: "Papeda", origin: "Papua", color: "#F5F5DC", fact: "Sumber karbohidrat utama di Indonesia Timur." },
+            { id: 6, name: "Pempek", origin: "Palembang", color: "#CD853F", fact: "Disajikan dengan cuko pedas, asam, dan manis." },
+            { id: 7, name: "Ayam Betutu", origin: "Bali", color: "#B22222", fact: "Menggunakan rempah Base Genep yang kaya rasa." },
+            { id: 8, name: "Soto Betawi", origin: "Jakarta", color: "#FFFACD", fact: "Khas dengan kuah santan atau susu yang gurih." },
+            { id: 10, name: "Mie Aceh", origin: "Aceh", color: "#FF4500", fact: "Mie kuning tebal dengan bumbu kari yang pedas." },
+            { id: 15, name: "Rawon", origin: "Surabaya", color: "#2F4F4F", fact: "Warna hitamnya berasal dari kluwek alami." }
+        ];
+
+        const LEVELS = [
+            { id: 1, pairs: 3, title: "Wayang Beginner" },
+            { id: 2, pairs: 5, title: "Culinary Explorer" },
+            { id: 3, pairs: 8, title: "Heritage Master" }
+        ];
+
+        let state = {
+            screen: 'home',
+            selectedLevel: null,
+            score: 0,
+            matchedIds: [],
+            foodItems: [],
+            originItems: [],
+            unlockedIds: JSON.parse(localStorage.getItem('rasaNusantara_unlocked')) || [1, 2]
+        };
+
+        const app = document.getElementById('app');
+
+        function shuffle(array) { return array.sort(() => Math.random() - 0.5); }
+
+        function triggerTransition(callback) {
+            const overlay = document.getElementById('transition-overlay');
+            overlay.classList.add('active');
+            setTimeout(() => {
+                callback();
+                setTimeout(() => overlay.classList.remove('active'), 400);
+            }, 600);
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 12; i++) {
+                const p = document.createElement('div');
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 50 + Math.random() * 50;
+                p.className = 'fixed w-3 h-3 rounded-full pointer-events-none z-50';
+                p.style.backgroundColor = color;
+                p.style.left = `${x}px`;
+                p.style.top = `${y}px`;
+                p.style.setProperty('--tw-translate-x', `${Math.cos(angle) * dist}px`);
+                p.style.setProperty('--tw-translate-y', `${Math.sin(angle) * dist}px`);
+                p.style.animation = `particle-fade 0.8s ease-out forwards`;
+                document.body.appendChild(p);
+                setTimeout(() => p.remove(), 800);
+            }
+        }
+
+        function createFoodSVG(name, color, size = "w-12 h-12") {
+            return `
+                <svg viewBox="0 0 100 100" class="${size}">
+                    <circle cx="50" cy="50" r="45" fill="${color}" opacity="0.15" />
+                    <g transform="translate(25, 25) scale(0.5)">
+                        <path d="M10 80 Q 50 100 90 80 L 90 40 Q 50 60 10 40 Z" fill="${color}" stroke="#333" stroke-width="3" />
+                        <path class="steam-line" d="M30 20 Q 35 10 30 0" fill="none" stroke="${color}" stroke-width="4" opacity="0.6" />
+                        <path class="steam-line" d="M50 20 Q 55 10 50 0" fill="none" stroke="${color}" stroke-width="4" opacity="0.6" style="animation-delay: 0.5s"/>
+                    </g>
+                </svg>
+            `;
+        }
+
+        function showHome() {
+            app.innerHTML = `
+                <div class="flex-1 flex flex-col items-center justify-center text-center p-6">
+                    <div class="mb-10 animate-float">
+                        <h1 class="text-6xl font-black text-white drop-shadow-[0_4px_0_#0EA5E9] italic">RASA</h1>
+                        <h2 class="text-2xl font-bold text-sky-500 bg-white px-6 py-2 rounded-full shadow-lg">NUSANTARA</h2>
+                    </div>
+                    <div class="space-y-6 w-full px-4">
+                        <button onclick="navigate('level-select')" class="btn-fancy w-full py-5 rounded-3xl text-2xl font-bold text-sky-600">MAIN SEKARANG</button>
+                        <button onclick="navigate('collection')" class="btn-fancy w-full py-4 rounded-3xl text-xl font-bold text-gray-500">GALERI KULINER</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showLevelSelect() {
+            app.innerHTML = `
+                <div class="flex-1 flex flex-col p-6 overflow-y-auto">
+                    <button onclick="navigate('home')" class="mb-6 self-start p-3 bg-white rounded-2xl shadow-md text-sky-500">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" stroke-width="2"/></svg>
+                    </button>
+                    <h2 class="text-3xl font-black text-white mb-8 drop-shadow">Pilih Tantangan</h2>
+                    <div class="space-y-4">
+                        ${LEVELS.map(lvl => `
+                            <button onclick="startGame(${lvl.id})" class="btn-fancy w-full p-6 rounded-3xl flex items-center justify-between">
+                                <div class="text-left">
+                                    <div class="text-xl font-bold text-sky-800">${lvl.title}</div>
+                                    <div class="text-xs text-sky-400 font-bold uppercase tracking-widest">${lvl.pairs} Pasangan</div>
+                                </div>
+                                <div class="bg-sky-100 p-3 rounded-xl"><svg class="w-6 h-6 text-sky-500" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"/></svg></div>
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function showGame() {
+            app.innerHTML = `
+                <div class="flex-1 flex flex-col p-4 h-full">
+                    <!-- Header -->
+                    <div class="flex justify-between items-center mb-6">
+                        <div class="bg-white/70 backdrop-blur rounded-2xl px-4 py-2 border-b-4 border-sky-100 shadow-lg">
+                            <span class="text-[10px] block font-bold text-sky-400 uppercase">SKOR</span>
+                            <span id="score-display" class="text-xl font-black text-sky-800">${state.score}</span>
+                        </div>
+                        <div class="text-sky-800 font-bold text-xs bg-white/40 px-3 py-2 rounded-full">Geser Makanan ke Daerahnya!</div>
+                    </div>
+
+                    <!-- Game Board -->
+                    <div class="flex-1 flex gap-4 overflow-hidden mb-4">
+                        <!-- Kolom Makanan (Draggable) -->
+                        <div id="food-column" class="flex-1 space-y-4 overflow-y-auto pb-4"></div>
+                        
+                        <!-- Kolom Daerah (Targets) -->
+                        <div id="origin-column" class="flex-1 space-y-4 overflow-y-auto pb-4"></div>
+                    </div>
+                </div>
+            `;
+            renderGameElements();
+        }
+
+        function renderGameElements() {
+            const foodCol = document.getElementById('food-column');
+            const originCol = document.getElementById('origin-column');
+            
+            foodCol.innerHTML = '';
+            originCol.innerHTML = '';
+
+            state.foodItems.forEach(food => {
+                const isMatched = state.matchedIds.includes(food.id);
+                if (isMatched) return;
+
+                const el = document.createElement('div');
+                el.className = 'draggable-item bg-white p-3 rounded-2xl shadow-lg border-b-4 border-sky-100 flex flex-col items-center justify-center text-center';
+                el.dataset.id = food.id;
+                el.innerHTML = `
+                    ${createFoodSVG(food.name, food.color, "w-14 h-14")}
+                    <div class="text-[10px] font-black text-sky-900 uppercase mt-1 leading-tight">${food.name}</div>
+                `;
+                initDrag(el);
+                foodCol.appendChild(el);
+            });
+
+            state.originItems.forEach(item => {
+                const isMatched = state.matchedIds.includes(item.id);
+                const el = document.createElement('div');
+                el.className = `drop-target bg-white/50 border-2 border-dashed border-sky-200 p-4 rounded-2xl h-24 flex items-center justify-center text-center relative transition-all ${isMatched ? 'opacity-30 border-solid border-sky-400 bg-sky-50' : ''}`;
+                el.dataset.id = item.id;
+                el.innerHTML = `
+                    <div>
+                        <div class="text-sm font-black text-sky-800 uppercase leading-tight">${item.origin}</div>
+                        ${isMatched ? '<div class="text-[8px] font-bold text-sky-400 mt-1">TERISI ✅</div>' : ''}
+                    </div>
+                `;
+                originCol.appendChild(el);
+            });
+        }
+
+        function initDrag(el) {
+            let startX, startY, initialX, initialY;
+            
+            el.addEventListener('pointerdown', e => {
+                el.setPointerCapture(e.pointerId);
+                const rect = el.getBoundingClientRect();
+                startX = e.clientX;
+                startY = e.clientY;
+                initialX = rect.left;
+                initialY = rect.top;
+                
+                el.classList.add('dragging');
+                el.style.position = 'fixed';
+                el.style.left = `${initialX}px`;
+                el.style.top = `${initialY}px`;
+                el.style.width = `${rect.width}px`;
+            });
+
+            el.addEventListener('pointermove', e => {
+                if (!el.classList.contains('dragging')) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                el.style.transform = `translate(${dx}px, ${dy}px) scale(1.1)`;
+
+                // Highlight target terdekat
+                const targets = document.querySelectorAll('.drop-target');
+                targets.forEach(t => t.classList.remove('target-active'));
+                const target = getOverlappingTarget(e.clientX, e.clientY);
+                if (target) target.classList.add('target-active');
+            });
+
+            el.addEventListener('pointerup', e => {
+                if (!el.classList.contains('dragging')) return;
+                el.classList.remove('dragging');
+                
+                const target = getOverlappingTarget(e.clientX, e.clientY);
+                if (target && target.dataset.id == el.dataset.id && !state.matchedIds.includes(parseInt(target.dataset.id))) {
+                    handleMatch(parseInt(el.dataset.id), target);
+                } else {
+                    // Snap back
+                    el.classList.add('animate-shake');
+                    el.style.position = 'static';
+                    el.style.transform = 'none';
+                    el.style.width = 'auto';
+                    setTimeout(() => el.classList.remove('animate-shake'), 300);
+                }
+                
+                document.querySelectorAll('.drop-target').forEach(t => t.classList.remove('target-active'));
+                renderGameElements();
+            });
+        }
+
+        function getOverlappingTarget(x, y) {
+            const targets = document.querySelectorAll('.drop-target');
+            for (let t of targets) {
+                const rect = t.getBoundingClientRect();
+                if (x > rect.left && x < rect.right && y > rect.top && y < rect.bottom) return t;
+            }
+            return null;
+        }
+
+        function handleMatch(id, target) {
+            state.matchedIds.push(id);
+            state.score += 150;
+            
+            const rect = target.getBoundingClientRect();
+            createParticles(rect.left + rect.width/2, rect.top + rect.height/2, '#0EA5E9');
+            
+            if (!state.unlockedIds.includes(id)) {
+                state.unlockedIds.push(id);
+                localStorage.setItem('rasaNusantara_unlocked', JSON.stringify(state.unlockedIds));
+            }
+
+            const level = LEVELS.find(l => l.id === state.selectedLevel);
+            if (state.matchedIds.length === level.pairs) {
+                setTimeout(() => navigate('review'), 800);
+            }
+        }
+
+        function showReview() {
+            const levelDatanew = state.foodItems;
+            app.innerHTML = `
+                <div class="flex-1 flex flex-col p-6 overflow-y-auto">
+                    <div class="text-center mb-8">
+                        <h2 class="text-5xl font-black text-white drop-shadow-lg italic mb-2">YUMMY!</h2>
+                        <div class="bg-white rounded-3xl p-4 shadow-xl border-b-8 border-sky-100">
+                            <div class="text-xs font-bold text-gray-400">Total Skor</div>
+                            <div class="text-4xl font-black text-sky-600">${state.score}</div>
+                        </div>
+                    </div>
+                    <div class="space-y-4 mb-10">
+                        ${levelDatanew.map(dish => `
+                            <div class="bg-white/80 rounded-3xl p-4 shadow-lg flex gap-4 items-center">
+                                <div class="bg-white p-2 rounded-xl">${createFoodSVG(dish.name, dish.color, "w-10 h-10")}</div>
+                                <div class="flex-1">
+                                    <div class="font-bold text-sky-900">${dish.name} - ${dish.origin}</div>
+                                    <p class="text-[10px] text-gray-600 leading-tight">${dish.fact}</p>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="mt-auto grid grid-cols-2 gap-4">
+                        <button onclick="navigate('level-select')" class="btn-fancy py-4 rounded-2xl font-bold text-sky-600">LAGI</button>
+                        <button onclick="navigate('home')" class="btn-fancy py-4 rounded-2xl font-bold text-gray-500">BERANDA</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showCollection() {
+            app.innerHTML = `
+                <div class="flex-1 flex flex-col p-6 h-full">
+                    <div class="flex items-center gap-4 mb-8">
+                        <button onclick="navigate('home')" class="p-3 bg-white rounded-2xl shadow-md text-sky-500">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" stroke-width="2"/></svg>
+                        </button>
+                        <h2 class="text-2xl font-black text-white drop-shadow">Koleksi Rasa</h2>
+                    </div>
+                    <div class="flex-1 overflow-y-auto grid grid-cols-2 gap-4 pb-10">
+                        ${CULINARY_DATA.map(food => {
+                            const isUnlocked = state.unlockedIds.includes(food.id);
+                            return `
+                                <div class="bg-white rounded-3xl p-4 shadow-lg flex flex-col items-center justify-center ${!isUnlocked ? 'grayscale opacity-50' : 'animate-float'}">
+                                    ${isUnlocked ? createFoodSVG(food.name, food.color, "w-16 h-16") : '<div class="w-16 h-16 flex items-center justify-center font-bold text-gray-300">?</div>'}
+                                    <div class="mt-2 text-xs font-bold text-sky-900">${isUnlocked ? food.name : 'Misteri'}</div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function navigate(screen) {
+            triggerTransition(() => {
+                state.screen = screen;
+                render();
+            });
+        }
+
+        function startGame(levelId) {
+            const level = LEVELS.find(l => l.id === levelId);
+            state.selectedLevel = levelId;
+            state.score = 0;
+            state.matchedIds = [];
+            
+            const rawData = shuffle([...CULINARY_DATA]).slice(0, level.pairs);
+            state.foodItems = shuffle([...rawData]);
+            state.originItems = shuffle([...rawData]);
+            
+            navigate('game');
+        }
+
+        function render() {
+            switch(state.screen) {
+                case 'home': showHome(); break;
+                case 'level-select': showLevelSelect(); break;
+                case 'game': showGame(); break;
+                case 'review': showReview(); break;
+                case 'collection': showCollection(); break;
+            }
+        }
+
+        window.onload = () => {
+            const container = document.getElementById('clouds-container');
+            for (let i = 0; i < 6; i++) {
+                const cloud = document.createElement('div');
+                cloud.className = 'cloud animate-drift';
+                cloud.style.top = `${Math.random() * 80}%`;
+                cloud.style.left = `-${Math.random() * 50}%`;
+                cloud.style.animationDelay = `${Math.random() * 15}s`;
+                cloud.innerHTML = `<svg width="120" height="70"><ellipse cx="40" cy="50" rx="30" ry="25" fill="white" opacity="0.6" /><ellipse cx="80" cy="40" rx="40" ry="35" fill="white" opacity="0.6" /></svg>`;
+                container.appendChild(cloud);
+            }
+            showHome();
+        };
+    </script>
+</body>
+</html>
